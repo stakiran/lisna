@@ -1,0 +1,159 @@
+LabelTop:
+
+// メニュー表示位置を変える.
+//   if キー押下 then キー割り当て経由なのでキャレット位置に.
+//   else メニューやツールバーからの起動とみなしてマウス位置に.
+// キー割り当ては修飾キーを必ず使うので shift, ctrl, alt を見れば十分.
+#use_mouse_pos = true;
+if(iskeydown(0x10)){
+	#use_mouse_pos = false;
+}
+if(iskeydown(0x11)){
+	#use_mouse_pos = false;
+}
+if(iskeydown(0x12)){
+	#use_mouse_pos = false;
+}
+
+#cnt=0;
+#I_ADD      = #cnt; #cnt=#cnt+1;
+#I_COPY     = #cnt; #cnt=#cnt+1;
+#I_SEP1     = #cnt; #cnt=#cnt+1;
+#I_SORT     = #cnt; #cnt=#cnt+1;
+#I_SEP2     = #cnt; #cnt=#cnt+1;
+#I_EDIT_ME  = #cnt;
+
+MenuDefinition:
+
+// [[[ menu item start
+#idx=#I_ADD; $items[#idx]      = "(&A)Add";
+#idx=#I_COPY; $items[#idx]     = "(&C)Copy";
+#idx=#I_SEP1; $items[#idx]     = "\x01";
+#idx=#I_SORT; $items[#idx]     = "(& )Sort";
+#idx=#I_SEP2; $items[#idx]     = "\x01";
+#idx=#I_EDIT_ME; $items[#idx]  = "(&P)Programming this macro";
+#idx=#idx+1; #maxidx = #idx;
+// menu item end ]]]
+
+if(#use_mouse_pos==true){
+	mousemenuarray $items, #maxidx;
+}else{
+	menuarray $items, #maxidx;
+}
+
+Interpret:
+
+if(result==0){
+	// Cancel
+	endmacro;
+}
+#si = result-1;
+$sn = $items[#si];
+
+// 現在開いてる lisna ファイル絡みの情報.
+$OPENING_FILE_FULLPATH = filename;
+
+// pythonw を使うと DOS 窓非表示で実行できる.
+// ただし pythonw を使うと秀丸エディタが再アクティブにならず
+// リロード確認ダイアログも出なくなってしまうため,
+// 明示的にリロードを行わせる必要がある.
+//$USING_PYTHON_BIN = "python"
+//#use_explicit_reload = false;
+$USING_PYTHON_BIN = "pythonw";
+#use_explicit_reload = true;
+
+ACTIONS:
+
+if(#si==#I_EDIT_ME){
+	$path = hidemarudir+"\\hidemaru.exe " + currentmacrofilename;
+	run $path;
+	endmacro;
+}
+
+Add:
+if(#si==#I_ADD){
+	call DO_ADD;
+	endmacro;
+}
+
+COPY:
+if(#si==#I_COPY){
+	call DO_COPY;
+	endmacro;
+}
+
+SORT:
+if(#si==#I_SORT){
+	call DO_SORT;
+	endmacro;
+}
+
+endmacro;
+
+SUBROOTIN_ACTIONS:
+
+DO_SORT:
+	// 関係無いファイル上で実行した時は何もしない.
+	// lisna.py 側でもガードかけてるが,
+	// いちいち python を起動するのもだるいのでここで弾く.
+	call if_not_lisna_then_end;
+
+	// 以後のソート処理は元ファイルを読み込んでから処理するため
+	// 上書き保存しておかないと現在の内容でソートされない.
+	save;
+
+	title "Sorting...";
+	$program = $USING_PYTHON_BIN + " " + currentmacrodirectory + "\\lisna.py";
+	$args = "-i " + $OPENING_FILE_FULLPATH;
+	run $program + " " + $args;
+	title 0;
+	call smart_reload;
+
+	return 0;
+
+DO_ADD:
+	golinetop;
+	insertline;
+	return 0;
+
+DO_COPY:
+	call if_blank_then_end;
+
+	call get_currentline;
+	$curline = $$return;
+
+	// 次行を確保してコピーを挿入
+	golineend;
+	insertreturn;
+	golinetop; 
+	insert $curline;
+
+	// 複製後は行末からいじるのが普通だと思う.
+	golineend;
+
+	return 0;
+
+SUBROOTINS:
+
+if_blank_then_end:
+	if(linelen==0){
+		endmacro;
+	}
+	return 0;
+
+if_not_lisna_then_end:
+	if(filetype!=".lisna"){
+		endmacro;
+	}
+	return 0;
+
+smart_reload:
+	if(#use_explicit_reload==true){
+		title "Reloading...";
+		reopen;
+		title 0;
+	}
+	return 0;
+
+get_currentline:
+	return gettext(0, y, linelen ,y, 0);
